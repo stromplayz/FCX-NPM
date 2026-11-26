@@ -1,0 +1,152 @@
+name: Sync from source
+
+# Rebuilds dist/fcx.mjs from the private CLI source (cli/ in
+# stromplayz/FocusCaseX-App) and publishes it to this repo.
+#
+# Triggers:
+#   - workflow_dispatch     (manual / API)
+#   - repository_dispatch   (event type "cli-release", sent by the app
+#                            repo's scripts/release-cli.mjs)
+#   - schedule              (weekly safety net)
+#
+# Requires the ACTIONS_PAT repo secret: a PAT with read access to
+# stromplayz/FocusCaseX-App. After committing dist, the workflow tags
+# v<version> and pushes; publish.yml takes it from there.
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [cli-release]
+  schedule:
+    - cron: "23 5 * * 1"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-from-source
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out FCX-NPM
+        uses: actions/checkout@v4
+
+      - name: Check out private source (stromplayz/FocusCaseX-App)
+        uses: actions/checkout@v4
+        with:
+          repository: stromplayz/FocusCaseX-App
+          ref: main
+          token: ${{ secrets.ACTIONS_PAT }}
+          path: source
+          sparse-checkout: |
+            cli
+            fcx.config.json
+
+      - name: Detect CLI source
+        id: src
+        run: |
+          if [ -f source/cli/src/index.mjs ] && [ -f source/fcx.config.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "CLI source found on FocusCaseX-App@main."
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::cli/ source not found on stromplayz/FocusCaseX-App@main — commit the CLI source there to enable the dist build."
+          fi
+
+      - name: Read app version from fcx.config.json
+        if: steps.src.outputs.present == 'true'
+        id: ver
+        run: |
+          VERSION=$(node -p "require('./source/fcx.config.json').app || '0.0.0'")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "App version: $VERSION"
+
+      - name: Set up Node
+        if: steps.src.outputs.present == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build dist bundle (esbuild)
+        if: steps.src.outputs.present == 'true'
+        run: |
+          npm i --no-audit --no-fund --no-save --no-package-lock esbuild
+          cat > build-dist.mjs <<'BUILD'
+          import { build } from "esbuild";
+          import { readFileSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
+
+          const cfg = JSON.parse(readFileSync("./source/fcx.config.json", "utf8"));
+          const version = String(cfg.app || "0.0.0");
+
+          mkdirSync("./dist", { recursive: true });
+          await build({
+            entryPoints: ["./source/cli/src/index.mjs"],
+            outfile: "./dist/fcx.mjs",
+            bundle: true,
+            minify: true,
+            format: "esm",
+            platform: "node",
+            target: "node18",
+            legalComments: "none",
+            define: { FCX_CLI_VERSION: JSON.stringify(version) },
+            logLevel: "info",
+          });
+
+          let js = readFileSync("./dist/fcx.mjs", "utf8");
+          if (!js.startsWith("#!")) {
+            js = "#!/usr/bin/env node\n" + js;
+            writeFileSync("./dist/fcx.mjs", js);
+          }
+          chmodSync("./dist/fcx.mjs", 0o755);
+          console.log(`Built dist/fcx.mjs (focuscasex ${version}, ${(Buffer.byteLength(js) / 1024).toFixed(1)} KB)`);
+          BUILD
+          node build-dist.mjs
+
+      - name: Set package.json version from fcx.config.json
+        if: steps.src.outputs.present == 'true'
+        env:
+          FCX_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            pkg.version = process.env.FCX_VERSION;
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+            console.log("package.json version -> " + pkg.version);
+          '
+
+      - name: Commit dist (bot)
+        id: commit
+        if: steps.src.outputs.present == 'true'
+        run: |
+          git config user.name "fcx-sync-bot"
+          git config user.email "fcx-sync-bot@users.noreply.github.com"
+          git add package.json dist/fcx.mjs
+          if git diff --cached --quiet; then
+            echo "dist already matches the source build — nothing to commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "sync: dist from FocusCaseX-App cli@${{ steps.ver.outputs.version }} (fcx-sync-bot)"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tag and push
+        if: steps.src.outputs.present == 'true' && steps.commit.outputs.changed == 'true'
+        env:
+          FCX_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          TAG="v$FCX_VERSION"
+          git push origin main
+          git push origin :refs/tags/"$TAG" 2>/dev/null || true
+          git tag -fa "$TAG" -m "focuscasex $FCX_VERSION"
+          git push origin "$TAG"
+          echo "Pushed $TAG — publish.yml takes it from here."
+
+      - name: Skip notice (no CLI source yet)
+        if: steps.src.outputs.present == 'false'
+        run: |
+          echo "No changes made: the CLI source (cli/) is not committed on FocusCaseX-App@main yet."
+          echo "Once it is committed, this workflow builds dist, bumps the package version from fcx.config.json and tags v<version>."

@@ -1,0 +1,33 @@
+name: CI
+
+# Smoke test: pack the package, install it globally, run it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Pack and install globally
+        run: |
+          npm pack
+          PKG=$(ls focuscasex-*.tgz | head -n1)
+          npm i -g "./$PKG"
+
+      - name: Smoke test
+        run: |
+          fcx --version
+          fcx doctor --offline
+          fcx --help

@@ -1,0 +1,37 @@
+{
+  "name": "focuscasex",
+  "version": "2.7.0",
+  "description": "FocusCaseX CLI — install and host the FocusCaseX registry anywhere: marketplace catalog, workbenches, local registry server, MCP setup helper.",
+  "type": "module",
+  "bin": {
+    "fcx": "./dist/fcx.mjs",
+    "focuscasex": "./dist/fcx.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "focuscasex",
+    "clinic",
+    "emr",
+    "registry",
+    "workbench",
+    "marketplace",
+    "mcp"
+  ],
+  "author": "FocusCaseX / stromplayz",
+  "homepage": "https://stromplayz.github.io/FocusCaseX",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stromplayz/FCX-NPM.git"
+  },
+  "bugs": {
+    "url": "https://github.com/stromplayz/FCX-NPM/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,67 @@
+name: Publish
+
+# Publishes focuscasex to npm on every v* tag (the sync-from-source
+# workflow tags v<version> after each dist rebuild).
+#
+# npm publishing activates once the NPM_TOKEN secret is added to this repo.
+# Until then the workflow packs the tarball and attaches it to the tag's
+# GitHub Release — the package stays installable via:
+#   npm i -g github:stromplayz/FCX-NPM
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Check for NPM_TOKEN
+        id: token
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "set=true" >> "$GITHUB_OUTPUT"
+            echo "NPM_TOKEN found — npm publish is armed."
+          else
+            echo "set=false" >> "$GITHUB_OUTPUT"
+            echo "NPM_TOKEN is not configured on this repo."
+          fi
+
+      - name: Publish to npm
+        if: steps.token.outputs.set == 'true'
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: npm publish skipped (NPM_TOKEN missing)
+        if: steps.token.outputs.set != 'true'
+        run: |
+          echo "npm publish skipped — add the NPM_TOKEN secret; the package remains installable via GitHub: npm i -g github:stromplayz/FCX-NPM"
+
+      - name: Pack tarball
+        if: steps.token.outputs.set != 'true'
+        run: |
+          npm pack
+          ls -l focuscasex-*.tgz
+
+      - name: Attach tarball to the GitHub Release
+        if: steps.token.outputs.set != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: focuscasex-*.tgz
+          generate_release_notes: true
