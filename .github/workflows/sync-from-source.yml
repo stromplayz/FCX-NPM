@@ -60,9 +60,9 @@ jobs:
         if: steps.src.outputs.present == 'true'
         id: ver
         run: |
-          VERSION=$(node -p "require('./source/fcx.config.json').app || '0.0.0'")
+          VERSION=$(node -p "require('./source/cli/package.json').version || require('./source/fcx.config.json').app || '0.0.0'")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "App version: $VERSION"
+          echo "CLI version: $VERSION"
 
       - name: Set up Node
         if: steps.src.outputs.present == 'true'
@@ -78,8 +78,8 @@ jobs:
           import { build } from "esbuild";
           import { readFileSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
 
-          const cfg = JSON.parse(readFileSync("./source/fcx.config.json", "utf8"));
-          const version = String(cfg.app || "0.0.0");
+          const pkg = JSON.parse(readFileSync("./source/cli/package.json", "utf8"));
+          const version = String(pkg.version || JSON.parse(readFileSync("./source/fcx.config.json", "utf8")).app || "0.0.0");
 
           mkdirSync("./dist", { recursive: true });
           await build({

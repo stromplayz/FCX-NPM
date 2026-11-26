@@ -1,7 +1,7 @@
 {
   "name": "focuscasex",
-  "version": "2.9.0",
-  "description": "FocusCaseX CLI — install and host the FocusCaseX registry anywhere: marketplace catalog, workbenches, local registry server, MCP setup helper.",
+  "version": "3.0.0",
+  "description": "The FocusCaseX Console — clinic workspace, Extensions marketplace and licence client for the terminal.",
   "type": "module",
   "bin": {
     "fcx": "./dist/fcx.mjs",
